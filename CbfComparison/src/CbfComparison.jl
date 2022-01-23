@@ -14,11 +14,11 @@ module CbfComparison
     end
 
     mutable struct RobotState
-        x
-        dx
-        x_history
-        dx_history
-        time_history
+        x::Array{Float64}
+        dx::Array{Float64}
+        x_history::Matrix{Float64}
+        dx_history::Matrix{Float64}
+        time_history::Array{Float64}
     end
 
     function min_dist(param::TestCondition, state::RobotState)
@@ -120,7 +120,8 @@ module CbfComparison
         end
 
         # plot results
-        plot_result(param, state)
+        plot_pic(param, state)
+        plot_gif(param, state)
 
     end
 
@@ -129,7 +130,7 @@ module CbfComparison
         x .+ r * sin.(theta), y .+ r * cos.(theta)
     end
 
-    function plot_result(param::TestCondition, state::RobotState)
+    function plot_pic(param::TestCondition, state::RobotState)
         plot(state.x_history[:, 1], state.x_history[:, 2], label="trajectory", xlabel="x [m]", ylabel="y [m]")
         plot!(circle_shape(param.x_o1[1], param.x_o1[2], param.d_obs), seriestype=[:shape,], c=:blue, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 1")
         plot!(circle_shape(param.x_o2[1], param.x_o2[2], param.d_obs), seriestype=[:shape,], c=:purple, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 2")
@@ -146,6 +147,26 @@ module CbfComparison
         png("vel_time")
     end
 
+    function plot_gif(param::TestCondition, state::RobotState)
+        # initialize a plot
+        plt = plot(
+            1,
+            label="trajectory", 
+            xlabel="x [m]", 
+            ylabel="y [m]"
+        )
+
+        # add obstacles
+        plot!(circle_shape(param.x_o1[1], param.x_o1[2], param.d_obs), seriestype=[:shape,], c=:blue, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 1")
+        plot!(circle_shape(param.x_o2[1], param.x_o2[2], param.d_obs), seriestype=[:shape,], c=:purple, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 2")
+
+        # build an animated gif by pushing new points to the plot
+        anim = @animate for i=1:length(state.time_history)
+            push!(plt, state.x_history[i, 1], state.x_history[i, 2])
+        end every 10
+        gif(anim, "xy_2d.gif", fps = 30)
+    end
+
 end # module
 
 using .CbfComparison
@@ -156,7 +177,8 @@ x_goal = [3.0, 5.0]
 x_o1 = [1.0, 2.0]
 x_o2 = [2.5, 3.0]
 d_obs = 0.5
-sampling_time = 0.001
+sampling_time = 0.01
+
 param = CbfComparison.TestCondition(x_0, x_goal, x_o1, x_o2, d_obs, sampling_time)
 
 # start simulation
