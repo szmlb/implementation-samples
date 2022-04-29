@@ -36,6 +36,21 @@ module CbfComparison
 
     end
 
+    function delta_h(param::TestCondition, state::RobotState)
+
+        dist_o1 = norm(state.x - param.x_o1)
+        dist_o2 = norm(state.x - param.x_o2)
+
+        if dist_o1 < dist_o2
+            dist = dist_o1
+            return (state.x-param.x_o1)/dist
+        else
+            dist = dist_o2
+            return (state.x-param.x_o2)/dist
+        end
+
+    end
+
     function check_goal(param::TestCondition, state::RobotState)
 
         dist_goal = norm(state.x - param.x_goal)
@@ -57,12 +72,9 @@ module CbfComparison
 
     end
 
-    function apf(param::TestCondition, state::RobotState)
+    function controller(param::TestCondition, state::RobotState, k_att, k_rep, rho0)
 
-            # parameters
-            k_att = 1.0
-            k_rep = 1.0
-            rho0 = 0.5
+            # apf
 
             # attractive potential
             delta_u_att = k_att * (state.x - param.x_goal)
@@ -82,15 +94,35 @@ module CbfComparison
             return f_apf
     end
 
-    function cbf()
-        # place holder
+    function controller(param::TestCondition, state::RobotState, k, alpha)
+
+            # cbf
+
+            # nominal controller
+            v_des = k * (param.x_goal - state.x)
+
+            # h(x)
+            h, xor = min_dist(param, state)
+
+            # Psi
+            lgh_t = delta_h(param, state)
+            psi = lgh_t' * v_des + alpha * h
+
+            # input for satisfying barrier function
+            if psi < 0
+                v_safe = -lgh_t / (lgh_t' * lgh_t) * psi
+            else
+                v_safe = [0; 0]
+            end
+
+            return v_des + v_safe
     end
 
     function apf_cbf()
         # place holder
     end
 
-    function simulate(param::TestCondition)
+    function simulate(param::TestCondition, gains, name)
 
         # initialize
         x = param.x_0
@@ -104,12 +136,11 @@ module CbfComparison
         count = 0
         while true
 
-            # APF
-            f_apf = apf(param, state)
-
+            f = controller(param, state, gains...)
+            
             # update robot state
             time = param.sampling_time * count
-            update_state(param, state, f_apf, time)
+            update_state(param, state, f, time)
 
             # check goal state
             if check_goal(param, state) == true #|| count > 1000
@@ -120,8 +151,8 @@ module CbfComparison
         end
 
         # plot results
-        plot_pic(param, state)
-        plot_gif(param, state)
+        plot_pic(param, state, name)
+        plot_gif(param, state, name)
 
     end
 
@@ -130,24 +161,24 @@ module CbfComparison
         x .+ r * sin.(theta), y .+ r * cos.(theta)
     end
 
-    function plot_pic(param::TestCondition, state::RobotState)
+    function plot_pic(param::TestCondition, state::RobotState, name)
         plot(state.x_history[:, 1], state.x_history[:, 2], label="trajectory", xlabel="x [m]", ylabel="y [m]")
         plot!(circle_shape(param.x_o1[1], param.x_o1[2], param.d_obs), seriestype=[:shape,], c=:blue, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 1")
         plot!(circle_shape(param.x_o2[1], param.x_o2[2], param.d_obs), seriestype=[:shape,], c=:purple, linecolor=:black, fillalpha=0.2, aspectratio=1, label="Obstacle 2")
-        png("xy_2d")
+        png(name)
 
         p1 = plot(state.time_history[:, 1], state.x_history[:, 1], ylabel="x [m]")
         p2 = plot(state.time_history[:, 1], state.x_history[:, 2], xlabel="time [s]", ylabel="y [m]")
         plot(p1, p2, layout = (2, 1), legend = false)
-        png("pos_time")
+        png(name*"_pos_time")
 
         p3 = plot(state.time_history[:, 1], state.dx_history[:, 1], ylabel="dx [m/s]")
         p4 = plot(state.time_history[:, 1], state.dx_history[:, 2], xlabel="time [s]", ylabel="dy [m/s]")
         plot(p3, p4, layout = (2, 1), legend = false)
-        png("vel_time")
+        png(name*"_vel_time")
     end
 
-    function plot_gif(param::TestCondition, state::RobotState)
+    function plot_gif(param::TestCondition, state::RobotState, name)
         # initialize a plot
         plt = plot(
             1,
@@ -164,7 +195,7 @@ module CbfComparison
         anim = @animate for i=1:length(state.time_history)
             push!(plt, state.x_history[i, 1], state.x_history[i, 2])
         end every 10
-        gif(anim, "xy_2d.gif", fps = 30)
+        gif(anim, name*"_xy_2d.gif", fps = 30)
     end
 
 end # module
@@ -181,5 +212,16 @@ sampling_time = 0.01
 
 param = CbfComparison.TestCondition(x_0, x_goal, x_o1, x_o2, d_obs, sampling_time)
 
-# start simulation
-CbfComparison.simulate(param)
+# simulation for APF
+k_att = 1.0
+k_rep = 1.0
+rho0 = 0.5
+gains = [k_att, k_rep, rho0]
+CbfComparison.simulate(param, gains, "apf")
+
+# simulation for CBF
+# parameters
+k = 1.0
+alpha = 1.0
+gains = [k, alpha]
+CbfComparison.simulate(param, gains, "cbf")
