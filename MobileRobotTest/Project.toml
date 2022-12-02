@@ -1,0 +1,7 @@
+name = "MobileRobotTest"
+uuid = "330c2797-69ed-42ef-8c9e-ab12fc72a8b1"
+authors = ["szmlb <szmlb.robotics@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
